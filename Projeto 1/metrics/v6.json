@@ -1,0 +1,61 @@
+{
+    "runs": [
+        {
+            "wall_time_s": 39.35,
+            "stages": 47,
+            "tasks": 47,
+            "shuffle_read_mb": 0.004799842834472656,
+            "shuffle_write_mb": 0.004799842834472656,
+            "driver_time_s": 20.804,
+            "peak_memory_mb": 3291.375,
+            "run": 1,
+            "config": "v6"
+        },
+        {
+            "wall_time_s": 39.01,
+            "stages": 47,
+            "tasks": 47,
+            "shuffle_read_mb": 0.004799842834472656,
+            "shuffle_write_mb": 0.004799842834472656,
+            "driver_time_s": 20.464,
+            "peak_memory_mb": 3387.5,
+            "run": 2,
+            "config": "v6"
+        },
+        {
+            "wall_time_s": 38.99,
+            "stages": 47,
+            "tasks": 47,
+            "shuffle_read_mb": 0.004799842834472656,
+            "shuffle_write_mb": 0.004799842834472656,
+            "driver_time_s": 20.444,
+            "peak_memory_mb": 3437.8125,
+            "run": 3,
+            "config": "v6"
+        }
+    ],
+    "summary": {
+        "config": "v6",
+        "n_runs": 3,
+        "mean": {
+            "wall_time_s": 39.11666666666667,
+            "stages": 47.0,
+            "tasks": 47.0,
+            "shuffle_read_mb": 0.004799842834472656,
+            "shuffle_write_mb": 0.004799842834472656,
+            "driver_time_s": 20.570666666666664,
+            "peak_memory_mb": 3372.2291666666665,
+            "run": 2.0
+        },
+        "std": {
+            "wall_time_s": 0.2023198787399143,
+            "stages": 0.0,
+            "tasks": 0.0,
+            "shuffle_read_mb": 0.0,
+            "shuffle_write_mb": 0.0,
+            "driver_time_s": 0.20231987873991336,
+            "peak_memory_mb": 74.40352219205307,
+            "run": 1.0
+        }
+    }
+}

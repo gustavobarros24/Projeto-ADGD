@@ -1,0 +1,7 @@
+**/__pycache__
+venv/
+spark-events/*
+!spark-events/.gitkeep
+output/execution_plan.txt
+jobs/out/*
+!jobs/out/.gitkeep

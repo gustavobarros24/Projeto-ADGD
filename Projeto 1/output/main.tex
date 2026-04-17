@@ -1,0 +1,49 @@
+% Compile with:
+% pdflatex -interaction=nonstopmode main.tex && rm -f main.{aux,log,out,toc}
+
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{xfp}
+\geometry{a4paper, margin=1in}
+
+\begin{document}
+
+% Load parameters from the params.tex file
+\input{params}
+
+\title{Relatório de Utilização do Cluster HPC}
+\author{Período: \reportPeriod}
+\date{Mês de Referência: \reportMonth \ \reportYear}
+\maketitle
+
+\section*{Resumo do Sistema}
+\begin{itemize}
+    \item \textbf{Nós ARM disponíveis:} \armnodes
+    \item \textbf{Nós AMD disponíveis:} \amdnodes
+    \item \textbf{Nós GPU disponíveis:} \gpunodes
+    \item \textbf{Total de dias no período:} \ndays (Aprox. \monthhours~horas)
+\end{itemize}
+
+\section*{Estatísticas de Jobs (Mensal)}
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|c|c|c|c|}
+        \hline
+        \textbf{Partição} & \textbf{Total Jobs} & \textbf{Completos} & \textbf{Falhados} & \textbf{Horas Usadas} \\
+        \hline
+        ARM & \armJobs & \armCompletedJobs & \armFailedJobs & \armusedhours \\
+        AMD & \amdJobs & \amdCompletedJobs & \amdFailedJobs & \amdusedhours \\
+        GPU & \gpuJobs & \gpuCompletedJobs & \gpuFailedJobs & \gpuusedhours \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\section*{Estatísticas EuroHPC}
+\begin{itemize}
+    \item \textbf{ARM:} \armJobsEuroHPC \ jobs executados, totalizando \armusedhoursEuroHPC \ horas.
+    \item \textbf{AMD:} \amdJobsEuroHPC \ jobs executados, totalizando \amdusedhoursEuroHPC \ horas.
+    \item \textbf{GPU:} \gpuJobsEuroHPC \ jobs executados, totalizando \gpuusedhoursEuroHPC \ horas.
+\end{itemize}
+
+\end{document}

@@ -1,0 +1,546 @@
+% !TEX project = pdflatex
+\documentclass[conference,a4paper]{IEEEtran}
+
+\usepackage{packages}
+\input{macros}
+
+\begin{document}
+
+\title{Big Data Analysis 1st Project (2025/26)\\
+       \Large Track A: Spark SQL Optimization}
+
+\author{
+    \IEEEauthorblockN{André Miranda}
+    \IEEEauthorblockA{MEI, PG60238}
+    \and
+    \IEEEauthorblockN{Gustavo Barros}
+    \IEEEauthorblockA{MEI, PG61527}
+    \and
+    \IEEEauthorblockN{Miguel Carvalho}
+    \IEEEauthorblockA{MEI, PG61153}
+}
+
+\maketitle
+
+\begin{abstract}
+The study demonstrates that targeted optimizations—reducing repeated dataset scans,
+minimizing driver-side operations, and improving task parallelism—can yield
+substantial performance gains in Spark-based HPC analyses. By combining internal
+metrics from Spark event logs with system-level measurements from \texttt{dstat},
+we quantify improvements in execution time, memory usage, and I/O throughput,
+providing a comprehensive view of resource efficiency. The results highlight the
+effectiveness of structured pipeline refactoring and offer practical guidance for
+enhancing distributed data processing workflows in HPC environments.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Apache Spark, Spark SQL Optimization, HPC Job Analysis, Performance Benchmarking, Big Data Processing.
+\end{IEEEkeywords}
+
+\section{Introduction}
+\label{sec:introduction}
+
+High-Performance Computing (HPC) environments increasingly rely on distributed
+data processing frameworks, such as Apache Spark, to handle large-scale datasets
+efficiently. The combination of computational resources, parallel execution, and
+intelligent data management allows complex analyses to be performed in reasonable
+timeframes, but it also introduces challenges related to resource utilization,
+I/O bottlenecks, and driver–executor coordination.
+
+This report investigates the performance characteristics of a Spark-based Python
+script, \texttt{statsEHPC\_v1\_init.py}, designed to analyze HPC job statistics
+over multiple periods. The baseline implementation exhibited several performance
+limitations, including repeated dataset scans, extensive driver-side operations,
+and redundant shuffle activities. Understanding and mitigating these bottlenecks
+is crucial for efficient data processing in HPC contexts, where system-level
+contention and limited resources can exacerbate performance issues.
+
+The methodology employed combines internal and external profiling tools. Execution
+plans and Spark event logs were parsed using a custom \texttt{metrics\_parser.py}
+script to extract task, stage, shuffle, and driver metrics. Simultaneously,
+system-level utilization was measured with \texttt{dstat}, capturing CPU, memory,
+disk I/O, and network usage during each run. Each optimization was validated
+against the baseline output (\texttt{params\_baseline.tex}) to ensure correctness.
+
+The report is organized as follows. Section~\ref{sec:provided_implementation}
+describes the provided implementation, highlighting its key operations and
+performance characteristics. Section~\ref{sec:methodology} details the benchmarking
+approach and tools. Section~\ref{sec:optimizations} presents the optimizations,
+their rationale, and the observed performance improvements. Finally,
+Section~\ref{sec:analysis_results} discusses the results, identifying the most
+effective strategies and analyzing the impact on resource utilization and execution
+time.
+
+\section{Provided Implementation}
+\label{sec:provided_implementation}
+
+The provided baseline implementation, \texttt{statsEHPC\_v1\_init.py}, defines
+the reference pipeline for analysing HPC job accounting data and generating the
+\LaTeX\ parameter file (\texttt{params.tex}) used in the final report.
+
+The script initialises a Spark session and processes a set of monthly job log
+files containing information about job execution, including job state,
+partition, resource allocation, and runtime. Input files are discovered
+dynamically and loaded sequentially, with each file being read using
+\texttt{spark.read.csv()} and appended to a global DataFrame through iterative
+\texttt{union} operations.
+
+After ingestion, the dataset is enriched with derived attributes required for
+the analysis. These include the extraction of the reporting period from the file
+name, the classification of job outcomes into completed or failed states, and
+the attribution of jobs to specific clusters and funding agencies.
+
+Aggregated statistics are then computed for multiple reporting intervals (e.g.,
+monthly, quarterly, and year-to-date). For each interval, the script repeatedly
+applies \texttt{filter()} and \texttt{groupBy()} operations to compute metrics
+such as the number of completed and failed jobs, total job counts, and total
+execution time per cluster and funding category.
+
+The results of these aggregations are transferred to the driver using multiple
+\texttt{collect()} calls and stored in a dictionary. Finally, the dictionary is
+written to \texttt{params.tex}, where each metric is exported as a \LaTeX\ macro.
+
+While this implementation produces correct results, its structure introduces
+several inefficiencies. In particular, sequential file loading, iterative
+\texttt{union} construction, repeated dataset scans, and frequent
+\texttt{collect()} operations limit the effectiveness of Spark’s distributed
+execution model. These limitations motivate the optimisation strategies
+presented in the following section.
+
+\section{Methodology}
+\label{sec:methodology}
+
+The methodology followed in this project is based on a systematic cycle of
+analysis, optimisation and evaluation of a Spark-based data processing pipeline
+applied to HPC job accounting datasets.
+
+The process begins with a detailed examination of the provided implementation,
+focusing on its data flow, transformation pipeline and interaction with the
+Spark execution model. Particular attention is given to how input data is
+loaded, how derived attributes are computed, and how aggregations are executed
+across different reporting periods. This initial inspection establishes a
+baseline understanding of both the logical structure and the physical execution
+behaviour of the application.
+
+To support this analysis, Spark execution plans were collected using
+\texttt{explain("extended")}, allowing inspection of both the logical and
+physical plans generated by the Catalyst optimizer. In addition, Spark event
+logging was enabled for all executions. These logs were processed using a
+custom-built parser, which extracts key metrics such as the number of stages and
+tasks, shuffle read/write volumes, and execution timing information. This
+approach provides a fine-grained view of how transformations are translated into
+distributed execution steps.
+
+Resource utilization was measured externally using \texttt{dstat}, configured in
+the benchmarking scripts to sample CPU, memory, network and disk I/O activity
+during execution. CPU usage was collected using the \texttt{-tcmndry} flags,
+capturing timestamp, CPU, memory, network, disk and page statistics. Memory
+statistics capture usage and pressure over time, network throughput provides
+insight into data transfer costs associated with shuffle operations, and disk
+I/O metrics (reads/writes and throughput) help quantify the impact of data
+spilling and interaction with the Parallel File System (PFS).
+
+Each optimisation was implemented incrementally, following a controlled
+experimental protocol. For every version of the pipeline, three independent runs
+were executed under identical conditions, and average values were considered for
+comparison. This ensures that observed improvements are consistent and not due
+to transient system effects.
+
+To guarantee correctness throughout the optimisation process, a validation step
+was introduced. The output file \texttt{params.tex} generated by each version was
+compared against a reference baseline (\texttt{params\_baseline.tex}) using the
+\texttt{cmp} utility. This ensures that all optimisations preserve the exact
+semantics and numerical results required by the assignment.
+
+This methodology ensures that performance improvements are driven by measurable
+evidence, combining execution plan analysis, event-level metrics, and system
+resource monitoring, while strictly maintaining output correctness.
+
+\section{Optimization Strategies}
+\label{sec:optimizations}
+
+The optimisation process was conducted incrementally, starting from the
+baseline implementation and introducing targeted modifications aimed at
+addressing specific inefficiencies in Spark’s execution model. Each version
+focuses on a particular class of bottlenecks, including data ingestion,
+redundant transformations, shuffle-heavy aggregations, and excessive
+driver interaction.
+
+\subsection{Baseline Bottleneck Analysis}
+\label{sec:baseline_bottleneck_analysis}
+
+Before introducing optimisations, the baseline implementation was analysed to
+identify the main performance bottlenecks using execution time measurements,
+Spark event logs, and inspection of the physical plan via
+\texttt{explain("extended")}.
+
+The following critical issues were identified:
+
+\begin{itemize}
+    \item \textbf{Iterative file loading and union building:} sequential file
+    reads combined with repeated \texttt{union} operations create a deep
+    lineage and unnecessary intermediate stages.
+
+    \item \textbf{Repeated dataset scans:} independent
+    \texttt{filter(...).groupBy(...)} patterns force Spark to rescan the same
+    dataset multiple times.
+
+    \item \textbf{Excessive shuffle operations:} multiple aggregations over the
+    same keys trigger repeated wide transformations.
+
+    \item \textbf{Frequent \texttt{collect()} calls:} repeated driver
+    synchronisation introduces latency and limits scalability.
+
+    \item \textbf{Schema inference overhead:} repeated schema inference during
+    file loading adds unnecessary preprocessing cost.
+
+    \item \textbf{I/O inefficiency on PFS:} multiple small writes degrade
+    performance due to filesystem latency.
+\end{itemize}
+
+These bottlenecks guided the optimisation strategy described below.
+
+\subsection{\texttt{v1} - Baseline}
+\label{sec:v1}
+
+The baseline implementation performs sequential ingestion, iterative unions,
+repeated filtering and aggregation, and multiple driver-side collections.
+
+\textbf{Why this is inefficient:}
+This design underutilises Spark’s parallelism and forces repeated execution of
+the same transformations due to lazy evaluation.
+
+\textbf{Metrics (3 runs):}
+\begin{itemize}
+    \item Runtime: \texttt{\red{TODO}}
+    \item \#Stages / \#Tasks: \texttt{\red{TODO}}
+    \item Shuffle Read/Write: \texttt{\red{TODO}}
+\end{itemize}
+
+\textbf{Physical Plan Characteristics:}
+\begin{itemize}
+    \item Deep \texttt{Union} lineage
+    \item Multiple \texttt{FileScan} and \texttt{Exchange} nodes
+    \item Several independent jobs triggered by \texttt{collect()}
+\end{itemize}
+
+\subsection{\texttt{v2} - Parallel File Ingestion}
+\label{sec:v2}
+
+This optimisation replaces iterative file loading with a single
+\texttt{spark.read.csv()} over all input files.
+
+\textbf{Why:}
+Iterative \texttt{union} builds a long lineage and introduces overhead in both
+planning and execution. Spark is designed to parallelise file ingestion when
+files are provided upfront.
+
+\textbf{What is gained:}
+\begin{itemize}
+    \item Parallel file reading across executors
+    \item Elimination of intermediate DataFrames
+    \item Reduced DAG complexity and scheduling overhead
+\end{itemize}
+
+\textbf{Metrics (3 runs):}
+\begin{itemize}
+    \item Runtime: \texttt{\red{TODO}}
+\end{itemize}
+
+\textbf{Physical Plan Changes:}
+\begin{itemize}
+    \item Multiple \texttt{Union} nodes replaced by a single \texttt{FileScan}
+    \item Flatter and more efficient lineage
+\end{itemize}
+
+\subsection{\texttt{v3} - Output I/O Consolidation}
+\label{sec:v3}
+
+This version buffers output and writes the parameter file once.
+
+\textbf{Why:}
+On HPC Parallel File Systems, small writes incur high latency due to metadata
+operations and contention.
+
+\textbf{What is gained:}
+\begin{itemize}
+    \item Reduced I/O overhead
+    \item Lower filesystem contention
+    \item Improved end-to-end runtime stability
+\end{itemize}
+
+\textbf{Metrics (3 runs):}
+\begin{itemize}
+    \item Runtime: \texttt{\red{TODO}}
+\end{itemize}
+
+\textbf{Physical Plan Impact:}
+No direct change; improvement occurs outside Spark execution.
+
+\subsection{\texttt{v4} - DataFrame Caching}
+\label{sec:v4}
+
+The main DataFrame is persisted using
+\texttt{MEMORY\_AND\_DISK}.
+
+\textbf{Why:}
+Spark recomputes lineage for each action. When the same dataset is reused
+multiple times, this leads to redundant computation and I/O.
+
+\textbf{What is gained:}
+\begin{itemize}
+    \item Elimination of repeated dataset reconstruction
+    \item Reduced CPU and I/O overhead
+    \item More predictable execution times
+\end{itemize}
+
+\textbf{Metrics (3 runs):}
+\begin{itemize}
+    \item Runtime: \texttt{\red{TODO}}
+\end{itemize}
+
+\textbf{Physical Plan Changes:}
+\begin{itemize}
+    \item Introduction of \texttt{InMemoryTableScan}
+    \item Removal of repeated upstream \texttt{FileScan}
+\end{itemize}
+
+\subsection{\texttt{v5} - Column Pruning}
+\label{sec:v5}
+
+Only required columns are selected after ingestion.
+
+\textbf{Why:}
+Processing unnecessary columns increases memory usage, serialization cost,
+and shuffle volume.
+
+\textbf{What is gained:}
+\begin{itemize}
+    \item Reduced I/O footprint
+    \item Lower memory pressure
+    \item More efficient shuffles
+\end{itemize}
+
+\textbf{Metrics (3 runs):}
+\begin{itemize}
+    \item Runtime: \texttt{\red{TODO}}
+\end{itemize}
+
+\textbf{Physical Plan Changes:}
+\begin{itemize}
+    \item Early \texttt{Project} operator
+    \item Reduced data width across all stages
+\end{itemize}
+
+\subsection{\texttt{v6} - Filter Reuse}
+\label{sec:v6}
+
+Intermediate filtered DataFrames are reused.
+
+\textbf{Why:}
+Repeated filters force Spark to rescan and re-evaluate predicates on the same
+dataset multiple times.
+
+\textbf{What is gained:}
+\begin{itemize}
+    \item Reduced redundant scans
+    \item Fewer predicate evaluations
+    \item Improved logical plan compactness
+\end{itemize}
+
+\textbf{Metrics (3 runs):}
+\begin{itemize}
+    \item Runtime: \texttt{\red{TODO}}
+\end{itemize}
+
+\textbf{Physical Plan Changes:}
+\begin{itemize}
+    \item Fewer duplicated \texttt{Filter} nodes
+    \item Reduced scan frequency
+\end{itemize}
+
+\subsection{\texttt{v7} - Aggregation Fusion}
+\label{sec:v7}
+
+Multiple aggregations are merged into a single
+\texttt{groupBy().agg()}.
+
+\textbf{Why:}
+Each \texttt{groupBy} introduces a shuffle. Repeating it for each metric leads
+to excessive data movement.
+
+\textbf{What is gained:}
+\begin{itemize}
+    \item Significant reduction in shuffle operations
+    \item Fewer Spark jobs and stages
+    \item Improved network and disk efficiency
+\end{itemize}
+
+\textbf{Metrics (3 runs):}
+\begin{itemize}
+    \item Runtime: \texttt{\red{TODO}}
+    \item Shuffle Read/Write: \texttt{\red{TODO}}
+\end{itemize}
+
+\textbf{Physical Plan Changes:}
+\begin{itemize}
+    \item Multiple \texttt{Exchange} nodes collapsed into one
+    \item Single aggregation stage per dataset
+\end{itemize}
+
+\subsection{\texttt{v8} - Single-Pass Aggregation and Reduced \texttt{collect()}}
+\label{sec:v8}
+
+All metrics are computed in one aggregation and collected once.
+
+\textbf{Why:}
+Each \texttt{collect()} triggers a job and forces synchronisation between
+executors and the driver.
+
+\textbf{What is gained:}
+\begin{itemize}
+    \item Fewer driver–executor round-trips
+    \item Reduced job scheduling overhead
+    \item Better scalability in distributed execution
+\end{itemize}
+
+\textbf{Metrics (3 runs):}
+\begin{itemize}
+    \item Runtime: \texttt{\red{TODO}}
+\end{itemize}
+
+\textbf{Physical Plan Changes:}
+\begin{itemize}
+    \item Single aggregation and shuffle per iteration
+    \item Elimination of multiple action-triggered jobs
+\end{itemize}
+
+\subsection{Summary}
+\label{sec:optimizations_summary}
+
+The optimisation process systematically eliminates the main inefficiencies of
+the baseline implementation. The most impactful improvements arise from reducing
+shuffle operations, avoiding repeated dataset scans, and minimising
+driver-side interactions.
+
+The final pipeline aligns with Spark’s execution model by favouring
+single-pass transformations, reduced data movement, and efficient reuse of
+intermediate results.
+
+\section{Benchmark Policy}
+\label{sec:benchmark_policy}
+
+All experiments were executed on the ARM partition of the HPC cluster, with
+a single node allocated per run. Each node provided 48 CPU cores and 16~GB of
+RAM. Spark was configured to use 4 executors per node, each with 12 cores and
+4~GB of executor memory. PySpark version 4.1.1 was used, and datasets were
+read from the \texttt{/projects} directory on the Parallel File System (PFS),
+where the benchmark output files were also written.
+
+The benchmark procedure is automated via the \texttt{benchmark.sh} script,
+located at the \texttt{jobs/} directory. For each optimization, the script
+performs a dry run to warm up the JVM, then executes the target
+\texttt{statsEHPC} Python script for three iterations, collecting system-level
+resource utilization with \texttt{dstat} in CSV format (using the
+\texttt{-tcmndry} flags to capture timestamp, CPU, memory, network, disk, and
+page statistics). The generated Spark event logs are subsequently parsed using
+\texttt{metrics\_parser.py} to extract application-level metrics, including
+wall-clock time, stages, tasks, shuffle read/write volumes, driver time
+estimate, and peak memory usage.
+
+Peak CPU, memory, network, and disk I/O utilization are thus captured for each
+iteration, enabling analysis of resource bottlenecks in addition to Spark's
+internal metrics. The combination of event log analysis and system-level
+monitoring ensures that both computational and I/O impacts are properly
+quantified.
+
+For consistency and correctness, the output generated by each run is validated
+against the baseline results saved in \texttt{params\_baseline.tex} using
+\texttt{cmp}, ensuring that optimizations do not alter the final computed
+parameters.
+
+\subsection*{Measured Metrics}
+\label{sec:metrics}
+
+The primary metrics collected for each benchmark run include:
+\begin{itemize}
+    \item \textbf{Wall time (s):} Application start to end.
+    \item \textbf{Driver time (s):} Estimated driver-only time ($\text{wall} - \text{max-task-span}$).
+    \item \textbf{Stages:} Number of stages submitted.
+    \item \textbf{Tasks:} Total number of tasks executed across all stages.
+    \item \textbf{Shuffle read/write (MB):} Volume of data read and written during
+          shuffle operations.
+    \item \textbf{Peak memory (MB):} Maximum memory consumption per node.
+    \item \textbf{CPU, network, disk I/O:} System-level usage sampled by \texttt{dstat}.
+\end{itemize}
+
+All metrics are collected across three iterations, and the mean and standard
+deviation are reported to capture variability. This procedure provides a
+reliable basis for comparing the performance impact of each optimization.
+
+\section{Aggregation of Results}
+\label{sec:aggregation_results}
+
+\red{TODO}
+
+\section{Analysis of Results}
+\label{sec:analysis_results}
+
+The optimization process allowed a detailed examination of the performance characteristics
+of the baseline implementation. Initial profiling revealed that the main bottlenecks
+originated from repeated dataset scans, multiple driver-side operations such as
+\texttt{collect()}, and excessive shuffle activity caused by repeated
+\texttt{filter(...).groupBy(...)} sequences across periods.
+
+By restructuring the computation pipeline, the following improvements were observed:
+
+\begin{itemize}
+    \item \textbf{Reduced I/O operations:} Prefiltering and avoiding repeated scans
+          lowered the data read from the Parallel File System, reducing wall-clock
+          time and network traffic.
+    \item \textbf{Enhanced parallelism:} Partitioning and caching frequently accessed
+          datasets improved task-level parallelism, leading to better CPU utilization
+          and reduced driver wait times.
+    \item \textbf{Minimized driver-side operations:} Shifting operations like
+          aggregations and transformations to the executor side decreased memory
+          pressure on the driver and eliminated repeated \texttt{collect()} calls.
+\end{itemize}
+
+The combination of these strategies led to a measurable decrease in execution time,
+shuffle read/write volume, and peak memory usage, as reflected in the benchmark metrics
+collected via \texttt{metrics\_parser.py} and \texttt{dstat}.
+
+Among the optimizations, the most effective were those that reduced repeated scans
+and shuffle operations, demonstrating that I/O-bound tasks were the dominant factor
+in the original implementation's performance limitations. Optimizations targeting
+executor-side computation and caching provided additional, albeit smaller, gains.
+
+Finally, the validation of output using \texttt{params\_baseline.tex} confirmed that
+all transformations preserved correctness, ensuring that performance improvements
+did not compromise the final results.
+
+\section{Conclusions}
+\label{sec:conclusions}
+
+This work analyzed the performance of a Spark-based HPC workflow and demonstrated
+the impact of targeted optimizations on execution efficiency. The baseline
+implementation suffered from repeated dataset scans, excessive driver-side
+operations, and suboptimal parallelism, which were identified through a
+combination of Spark event logs and system-level metrics collected with
+\texttt{dstat}.
+
+By applying pipeline restructuring, pre-filtering, and task-level optimizations,
+we achieved significant reductions in wall-clock time and memory usage, while
+maintaining result consistency, verified against the baseline outputs. The
+benchmarking framework, including multiple iterations and automated validation
+with \texttt{cmp} against \texttt{params\_baseline.tex}, ensured robust and
+reproducible comparisons.
+
+These results highlight the importance of understanding both the logical
+execution plan and the physical resource utilization in HPC Spark applications.
+Optimizations that reduce unnecessary I/O and improve task parallelism provide
+the greatest gains. Future work may explore dynamic resource allocation, further
+I/O tuning, and predictive scheduling strategies to anticipate and mitigate
+potential bottlenecks in large-scale deployments.
+
+\end{document}
