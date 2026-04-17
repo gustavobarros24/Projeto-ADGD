@@ -1,0 +1,3 @@
+[submodule "dstat"]
+	path = dstat
+	url = https://github.com/dstat-real/dstat
